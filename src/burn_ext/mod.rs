@@ -12,7 +12,8 @@ pub trait TurboQuantBackendExt: Backend {
     fn turboquant_mse_device(tensor: Tensor<Self, 1>, bit_width: u8, seed: u64) -> Tensor<Self, 1>;
 
     /// Launch TurboQuant prod fused kernel and return the device tensor output.
-    fn turboquant_prod_device(tensor: Tensor<Self, 1>, bit_width: u8, seed: u64) -> Tensor<Self, 1>;
+    fn turboquant_prod_device(tensor: Tensor<Self, 1>, bit_width: u8, seed: u64)
+        -> Tensor<Self, 1>;
 }
 
 /// User-facing Tensor wrapper for TurboQuant MSE kernel path.
@@ -45,7 +46,8 @@ where
     BT: burn_cubecl::BoolElement,
 {
     use crate::kernels::{
-        encode_device_bitpacked, launch_turboquant_fused_device_from_handle, prepare_turboquant_launch_assets,
+        encode_device_bitpacked, launch_turboquant_fused_device_from_handle,
+        prepare_turboquant_launch_assets,
     };
 
     let primitive = tensor.into_primitive().tensor();
@@ -154,11 +156,7 @@ where
     I: burn_cubecl::IntElement,
     BT: burn_cubecl::BoolElement,
 {
-    fn turboquant_mse_device(
-        tensor: Tensor<Self, 1>,
-        bit_width: u8,
-        seed: u64,
-    ) -> Tensor<Self, 1> {
+    fn turboquant_mse_device(tensor: Tensor<Self, 1>, bit_width: u8, seed: u64) -> Tensor<Self, 1> {
         let primitive = tensor.into_primitive().tensor();
         let dim = primitive.shape.num_elements();
         let assets = crate::kernels::prepare_turboquant_launch_assets::<R>(
@@ -213,7 +211,13 @@ where
     }
 }
 
-#[cfg(all(test, feature = "burn-ext", feature = "wgpu", feature = "wgpu-msl", target_os = "macos"))]
+#[cfg(all(
+    test,
+    feature = "burn-ext",
+    feature = "wgpu",
+    feature = "wgpu-msl",
+    target_os = "macos"
+))]
 mod tests {
     use super::*;
 
@@ -222,7 +226,10 @@ mod tests {
     fn sample_tensor() -> Tensor<B, 1> {
         let device = Default::default();
         Tensor::<B, 1>::from_data(
-            burn::tensor::TensorData::new(vec![0.2_f32, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9], [8]),
+            burn::tensor::TensorData::new(
+                vec![0.2_f32, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9],
+                [8],
+            ),
             &device,
         )
     }
@@ -235,10 +242,16 @@ mod tests {
 
         let _mse = turboquant_mse(tensor.clone(), bit_width, seed);
         let _prod = turboquant_prod(tensor.clone(), bit_width, seed);
-        let packet_bp =
-            turboquant_mse_encode_bitpacked::<burn_wgpu::WgpuRuntime, i32, u32>(tensor.clone(), bit_width, seed);
-        let packet_ent =
-            turboquant_mse_encode_entropy::<burn_wgpu::WgpuRuntime, i32, u32>(tensor.clone(), bit_width, seed);
+        let packet_bp = turboquant_mse_encode_bitpacked::<burn_wgpu::WgpuRuntime, i32, u32>(
+            tensor.clone(),
+            bit_width,
+            seed,
+        );
+        let packet_ent = turboquant_mse_encode_entropy::<burn_wgpu::WgpuRuntime, i32, u32>(
+            tensor.clone(),
+            bit_width,
+            seed,
+        );
         let _decoded_bp = turboquant_mse_decode_indices::<burn_wgpu::WgpuRuntime>(&packet_bp);
         let _decoded_ent = turboquant_mse_decode_indices::<burn_wgpu::WgpuRuntime>(&packet_ent);
     }
@@ -255,12 +268,10 @@ mod tests {
             seed,
         );
         let packet = turboquant_mse_encode_entropy_with_codebook::<burn_wgpu::WgpuRuntime, i32, u32>(
-            tensor,
-            bit_width,
-            seed,
-            &codebook,
+            tensor, bit_width, seed, &codebook,
         );
-        let _decoded =
-            turboquant_mse_decode_indices_with_codebook::<burn_wgpu::WgpuRuntime>(&packet, &codebook);
+        let _decoded = turboquant_mse_decode_indices_with_codebook::<burn_wgpu::WgpuRuntime>(
+            &packet, &codebook,
+        );
     }
 }

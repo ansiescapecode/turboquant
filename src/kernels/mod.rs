@@ -13,7 +13,8 @@ use std::sync::{Mutex, OnceLock};
 
 use cubecl::prelude::*;
 use cubecl::server::Handle;
-use rand::{rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
+use rand::RngExt;
+use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 
 const MSE_ROTATION_SALT: u64 = 0xA5A5_17C3_913D_20FF;
 const PROD_PROJECTION_SALT: u64 = 0xCEFA_EDFE_1987_0011;
@@ -488,7 +489,11 @@ fn turboquant_pipeline_fused_kernel(
                     let residual_col = x_col - best_col;
                     dot += projection[base + col] * residual_col;
                 }
-                qjl_out[row] = if dot >= f32::new(0.0) { f32::new(1.0) } else { f32::new(-1.0) };
+                qjl_out[row] = if dot >= f32::new(0.0) {
+                    f32::new(1.0)
+                } else {
+                    f32::new(-1.0)
+                };
             }
         }
 
@@ -1103,7 +1108,9 @@ impl<R: Runtime> HuffmanCodebookReusePolicy<R> {
             }
             if packet.huffman_codebook_generation != Some(self.codebook_generation) {
                 self.invalidate();
-                panic!("huffman decode rejected: codebook generation mismatch (stale or wrong policy)");
+                panic!(
+                    "huffman decode rejected: codebook generation mismatch (stale or wrong policy)"
+                );
             }
             let expected_fingerprint = self.codebook_fingerprint.unwrap_or_else(|| {
                 let codebook = self
@@ -1135,8 +1142,14 @@ fn bits_to_bytes(bits: usize) -> usize {
 
 fn validate_packet_invariants<R: Runtime>(packet: &DeviceEncodedPacket<R>) {
     assert!(packet.dim > 0, "packet decode rejected: dim must be > 0");
-    assert!(packet.bit_width >= 1, "packet decode rejected: bit_width must be >= 1");
-    assert!(packet.word_count > 0, "packet decode rejected: word_count must be > 0");
+    assert!(
+        packet.bit_width >= 1,
+        "packet decode rejected: bit_width must be >= 1"
+    );
+    assert!(
+        packet.word_count > 0,
+        "packet decode rejected: word_count must be > 0"
+    );
     let max_bits = packet.word_count.saturating_mul(32);
     assert!(
         (packet.valid_bits as usize) <= max_bits,
@@ -1246,7 +1259,8 @@ impl<R: Runtime> AutoHuffmanCodebookPolicy<R> {
 
     /// Encode with automatic codebook reuse and rebuild strategy.
     pub fn encode(&mut self, outputs: &DeviceFusedOutputs<R>) -> DeviceEncodedPacket<R> {
-        let shape_changed = self.last_dim != Some(outputs.dim) || self.last_bit_width != Some(outputs.bit_width);
+        let shape_changed =
+            self.last_dim != Some(outputs.dim) || self.last_bit_width != Some(outputs.bit_width);
         if self.inner.is_none() || shape_changed {
             let codebook = build_device_huffman_codebook(outputs);
             let mut packet = encode_device_huffman_with_codebook(outputs, &codebook);
@@ -1335,14 +1349,7 @@ pub fn launch_turboquant_fused_device<R: Runtime>(
     seed: u64,
     emit_qjl: bool,
 ) -> DeviceFusedOutputs<R> {
-    launch_turboquant_fused_device_with_launch::<R>(
-        device,
-        input,
-        bit_width,
-        seed,
-        emit_qjl,
-        None,
-    )
+    launch_turboquant_fused_device_with_launch::<R>(device, input, bit_width, seed, emit_qjl, None)
 }
 
 /// Prepare reusable device launch assets for fused TurboQuant.
@@ -1444,16 +1451,23 @@ fn launch_turboquant_fused_with_input_handle<R: Runtime>(
     let projection_shape = vec![assets.dim * assets.dim];
     let strides = vec![1usize];
     let centroid_shape = vec![1usize << assets.bit_width];
-    let rotated_handle = assets.client.empty(assets.dim * core::mem::size_of::<f32>());
-    let mse_handle = assets.client.empty(assets.dim * core::mem::size_of::<f32>());
+    let rotated_handle = assets
+        .client
+        .empty(assets.dim * core::mem::size_of::<f32>());
+    let mse_handle = assets
+        .client
+        .empty(assets.dim * core::mem::size_of::<f32>());
     let mse_index_handle = assets
         .client
         .empty(assets.dim * core::mem::size_of::<u32>());
-    let qjl_handle = assets.client.empty(assets.dim * core::mem::size_of::<f32>());
+    let qjl_handle = assets
+        .client
+        .empty(assets.dim * core::mem::size_of::<f32>());
 
     // SAFETY: all tensor args use same client-owned contiguous 1D metadata.
-    let input_arg =
-        unsafe { TensorArg::from_raw_parts::<f32>(input_handle, &strides, &shape, assets.line_size) };
+    let input_arg = unsafe {
+        TensorArg::from_raw_parts::<f32>(input_handle, &strides, &shape, assets.line_size)
+    };
     let perm_arg = unsafe {
         TensorArg::from_raw_parts::<u32>(
             &assets.permutation_handle,
@@ -1483,8 +1497,9 @@ fn launch_turboquant_fused_with_input_handle<R: Runtime>(
 
     // SAFETY: all TensorArg views below are created from buffers allocated by the same client,
     // with 1D contiguous strides and shapes that exactly match the allocated element counts.
-    let input_rot_arg =
-        unsafe { TensorArg::from_raw_parts::<f32>(&rotated_handle, &strides, &shape, assets.line_size) };
+    let input_rot_arg = unsafe {
+        TensorArg::from_raw_parts::<f32>(&rotated_handle, &strides, &shape, assets.line_size)
+    };
     let centroids_arg = unsafe {
         TensorArg::from_raw_parts::<f32>(
             &assets.centroids_handle,
@@ -1501,13 +1516,15 @@ fn launch_turboquant_fused_with_input_handle<R: Runtime>(
             assets.line_size,
         )
     };
-    let mse_arg =
-        unsafe { TensorArg::from_raw_parts::<f32>(&mse_handle, &strides, &shape, assets.line_size) };
+    let mse_arg = unsafe {
+        TensorArg::from_raw_parts::<f32>(&mse_handle, &strides, &shape, assets.line_size)
+    };
     let mse_index_arg = unsafe {
         TensorArg::from_raw_parts::<u32>(&mse_index_handle, &strides, &shape, assets.line_size)
     };
-    let qjl_arg =
-        unsafe { TensorArg::from_raw_parts::<f32>(&qjl_handle, &strides, &shape, assets.line_size) };
+    let qjl_arg = unsafe {
+        TensorArg::from_raw_parts::<f32>(&qjl_handle, &strides, &shape, assets.line_size)
+    };
 
     // SAFETY: launch dimensions and argument shapes are validated above and agree with kernel
     // expectations (`dim` elements for input/output and `dim*dim` for projection).
@@ -1547,7 +1564,11 @@ pub fn launch_turboquant_fused_device_with_assets<R: Runtime>(
     input: &[f32],
     emit_qjl: bool,
 ) -> DeviceFusedOutputs<R> {
-    assert_eq!(input.len(), assets.dim, "input length must match prepared dim");
+    assert_eq!(
+        input.len(),
+        assets.dim,
+        "input length must match prepared dim"
+    );
     let input_handle = assets.client.create_from_slice(f32::as_bytes(input));
     launch_turboquant_fused_with_input_handle(assets, &input_handle, emit_qjl)
 }
@@ -1574,8 +1595,13 @@ pub fn launch_turboquant_fused_device_with_launch<R: Runtime>(
 ) -> DeviceFusedOutputs<R> {
     assert!(!input.is_empty(), "input must be non-empty");
     assert!(bit_width >= 1, "bit_width must be >= 1");
-    let assets =
-        prepare_turboquant_launch_assets::<R>(device, input.len(), bit_width, seed, launch_override);
+    let assets = prepare_turboquant_launch_assets::<R>(
+        device,
+        input.len(),
+        bit_width,
+        seed,
+        launch_override,
+    );
     launch_turboquant_fused_device_with_assets(&assets, input, emit_qjl)
 }
 
@@ -1592,7 +1618,9 @@ pub fn read_fused_indices<R: Runtime>(outputs: &DeviceFusedOutputs<R>) -> Vec<u3
 }
 
 /// Encode device-resident MSE indices using on-device bitpacking.
-pub fn encode_device_bitpacked<R: Runtime>(outputs: &DeviceFusedOutputs<R>) -> DeviceEncodedPacket<R> {
+pub fn encode_device_bitpacked<R: Runtime>(
+    outputs: &DeviceFusedOutputs<R>,
+) -> DeviceEncodedPacket<R> {
     let valid_bits = (outputs.dim as u32) * (outputs.bit_width as u32);
     let word_count = (valid_bits as usize).div_ceil(32);
     let payload_words_handle = outputs
@@ -1652,7 +1680,9 @@ pub fn encode_device_bitpacked<R: Runtime>(outputs: &DeviceFusedOutputs<R>) -> D
 }
 
 /// Apply on-device reversible entropy transform to a device bitpacked payload.
-pub fn encode_device_entropy<R: Runtime>(packet: &DeviceEncodedPacket<R>) -> DeviceEncodedPacket<R> {
+pub fn encode_device_entropy<R: Runtime>(
+    packet: &DeviceEncodedPacket<R>,
+) -> DeviceEncodedPacket<R> {
     let encoded_handle = packet
         .client
         .empty(packet.word_count * core::mem::size_of::<u32>());
@@ -1701,7 +1731,9 @@ pub fn encode_device_entropy<R: Runtime>(packet: &DeviceEncodedPacket<R>) -> Dev
 }
 
 /// Build Huffman tree and encode indices on-device.
-pub fn encode_device_huffman<R: Runtime>(outputs: &DeviceFusedOutputs<R>) -> DeviceEncodedPacket<R> {
+pub fn encode_device_huffman<R: Runtime>(
+    outputs: &DeviceFusedOutputs<R>,
+) -> DeviceEncodedPacket<R> {
     assert_huffman_experimental();
     let codebook = build_device_huffman_codebook(outputs);
     let mut packet = encode_device_huffman_with_codebook(outputs, &codebook);
@@ -1789,7 +1821,12 @@ pub fn build_device_huffman_codebook<R: Runtime>(
     for step in 0..levels.saturating_sub(1) {
         let next_node = levels + step;
         let weights_arg = unsafe {
-            TensorArg::from_raw_parts::<u32>(&node_weights_handle, &strides, &shape_nodes, line_size)
+            TensorArg::from_raw_parts::<u32>(
+                &node_weights_handle,
+                &strides,
+                &shape_nodes,
+                line_size,
+            )
         };
         let parent_arg = unsafe {
             TensorArg::from_raw_parts::<u32>(&node_parent_handle, &strides, &shape_nodes, line_size)
@@ -1800,10 +1837,12 @@ pub fn build_device_huffman_codebook<R: Runtime>(
         let right_arg = unsafe {
             TensorArg::from_raw_parts::<u32>(&node_right_handle, &strides, &shape_nodes, line_size)
         };
-        let scratch_min1_arg =
-            unsafe { TensorArg::from_raw_parts::<u32>(&scratch_min1_handle, &strides, &shape_one, line_size) };
-        let scratch_min2_arg =
-            unsafe { TensorArg::from_raw_parts::<u32>(&scratch_min2_handle, &strides, &shape_one, line_size) };
+        let scratch_min1_arg = unsafe {
+            TensorArg::from_raw_parts::<u32>(&scratch_min1_handle, &strides, &shape_one, line_size)
+        };
+        let scratch_min2_arg = unsafe {
+            TensorArg::from_raw_parts::<u32>(&scratch_min2_handle, &strides, &shape_one, line_size)
+        };
         unsafe {
             huffman_merge_step_kernel::launch_unchecked::<R>(
                 &outputs.client,
@@ -1946,7 +1985,9 @@ pub fn decode_device_indices_with_codebook<R: Runtime>(
 
     if matches!(packet.encoding, DeviceEncodingKind::Huffman) {
         assert_huffman_experimental();
-        let out_indices = packet.client.empty(packet.dim * core::mem::size_of::<u32>());
+        let out_indices = packet
+            .client
+            .empty(packet.dim * core::mem::size_of::<u32>());
         let shape_words = vec![packet.word_count];
         let shape_nodes = vec![(1usize << packet.bit_width) * 2usize];
         let shape_indices = vec![packet.dim];
@@ -1980,16 +2021,25 @@ pub fn decode_device_indices_with_codebook<R: Runtime>(
         };
 
         let payload_arg = unsafe {
-            TensorArg::from_raw_parts::<u32>(&packet.payload_words_handle, &strides, &shape_words, line_size)
+            TensorArg::from_raw_parts::<u32>(
+                &packet.payload_words_handle,
+                &strides,
+                &shape_words,
+                line_size,
+            )
         };
-        let left_arg =
-            unsafe { TensorArg::from_raw_parts::<u32>(left_handle, &strides, &shape_nodes, line_size) };
-        let right_arg =
-            unsafe { TensorArg::from_raw_parts::<u32>(right_handle, &strides, &shape_nodes, line_size) };
-        let root_arg =
-            unsafe { TensorArg::from_raw_parts::<u32>(root_handle, &strides, &shape_one, line_size) };
-        let out_arg =
-            unsafe { TensorArg::from_raw_parts::<u32>(&out_indices, &strides, &shape_indices, line_size) };
+        let left_arg = unsafe {
+            TensorArg::from_raw_parts::<u32>(left_handle, &strides, &shape_nodes, line_size)
+        };
+        let right_arg = unsafe {
+            TensorArg::from_raw_parts::<u32>(right_handle, &strides, &shape_nodes, line_size)
+        };
+        let root_arg = unsafe {
+            TensorArg::from_raw_parts::<u32>(root_handle, &strides, &shape_one, line_size)
+        };
+        let out_arg = unsafe {
+            TensorArg::from_raw_parts::<u32>(&out_indices, &strides, &shape_indices, line_size)
+        };
 
         unsafe {
             huffman_decode_indices_kernel::launch_unchecked::<R>(
@@ -2018,7 +2068,12 @@ pub fn decode_device_indices_with_codebook<R: Runtime>(
             .empty(packet.word_count * core::mem::size_of::<u32>());
         // SAFETY: contiguous 1D metadata with same client buffers.
         let in_arg = unsafe {
-            TensorArg::from_raw_parts::<u32>(&packet.payload_words_handle, &strides, &shape_words, line_size)
+            TensorArg::from_raw_parts::<u32>(
+                &packet.payload_words_handle,
+                &strides,
+                &shape_words,
+                line_size,
+            )
         };
         let out_arg = unsafe {
             TensorArg::from_raw_parts::<u32>(&decoded_words, &strides, &shape_words, line_size)
@@ -2038,12 +2093,16 @@ pub fn decode_device_indices_with_codebook<R: Runtime>(
         packet.payload_words_handle.clone()
     };
 
-    let out_indices = packet.client.empty(packet.dim * core::mem::size_of::<u32>());
+    let out_indices = packet
+        .client
+        .empty(packet.dim * core::mem::size_of::<u32>());
     // SAFETY: contiguous 1D metadata with same client buffers.
-    let payload_arg =
-        unsafe { TensorArg::from_raw_parts::<u32>(&unpack_source, &strides, &shape_words, line_size) };
-    let out_arg =
-        unsafe { TensorArg::from_raw_parts::<u32>(&out_indices, &strides, &shape_indices, line_size) };
+    let payload_arg = unsafe {
+        TensorArg::from_raw_parts::<u32>(&unpack_source, &strides, &shape_words, line_size)
+    };
+    let out_arg = unsafe {
+        TensorArg::from_raw_parts::<u32>(&out_indices, &strides, &shape_indices, line_size)
+    };
     unsafe {
         unpack_indices_kernel::launch_unchecked::<R>(
             &packet.client,
@@ -2084,7 +2143,11 @@ pub fn launch_turboquant_pipeline_device_from_handle_with_options<R: Runtime>(
     kernel_options: TurboQuantKernelOptions,
 ) -> (DeviceFusedOutputs<R>, DeviceEncodedPacket<R>) {
     if kernel_options.emit_entropy {
-        let state = launch_turboquant_fused_with_input_handle(assets, input_handle, kernel_options.emit_qjl);
+        let state = launch_turboquant_fused_with_input_handle(
+            assets,
+            input_handle,
+            kernel_options.emit_qjl,
+        );
         let packed = encode_device_bitpacked(&state);
         let encoded = encode_device_entropy(&packed);
         return (state, encoded);
@@ -2099,15 +2162,22 @@ pub fn launch_turboquant_pipeline_device_from_handle_with_options<R: Runtime>(
     let payload_shape = vec![word_count];
     let strides = vec![1usize];
 
-    let mse_handle = assets.client.empty(assets.dim * core::mem::size_of::<f32>());
+    let mse_handle = assets
+        .client
+        .empty(assets.dim * core::mem::size_of::<f32>());
     let mse_index_handle = assets
         .client
         .empty(assets.dim * core::mem::size_of::<u32>());
-    let qjl_handle = assets.client.empty(assets.dim * core::mem::size_of::<f32>());
-    let payload_words_handle = assets.client.empty(word_count * core::mem::size_of::<u32>());
+    let qjl_handle = assets
+        .client
+        .empty(assets.dim * core::mem::size_of::<f32>());
+    let payload_words_handle = assets
+        .client
+        .empty(word_count * core::mem::size_of::<u32>());
 
-    let input_arg =
-        unsafe { TensorArg::from_raw_parts::<f32>(input_handle, &strides, &shape, assets.line_size) };
+    let input_arg = unsafe {
+        TensorArg::from_raw_parts::<f32>(input_handle, &strides, &shape, assets.line_size)
+    };
     let centroids_arg = unsafe {
         TensorArg::from_raw_parts::<f32>(
             &assets.centroids_handle,
@@ -2135,13 +2205,15 @@ pub fn launch_turboquant_pipeline_device_from_handle_with_options<R: Runtime>(
     let sign_arg = unsafe {
         TensorArg::from_raw_parts::<f32>(&assets.signs_handle, &strides, &shape, assets.line_size)
     };
-    let mse_arg =
-        unsafe { TensorArg::from_raw_parts::<f32>(&mse_handle, &strides, &shape, assets.line_size) };
+    let mse_arg = unsafe {
+        TensorArg::from_raw_parts::<f32>(&mse_handle, &strides, &shape, assets.line_size)
+    };
     let mse_index_arg = unsafe {
         TensorArg::from_raw_parts::<u32>(&mse_index_handle, &strides, &shape, assets.line_size)
     };
-    let qjl_arg =
-        unsafe { TensorArg::from_raw_parts::<f32>(&qjl_handle, &strides, &shape, assets.line_size) };
+    let qjl_arg = unsafe {
+        TensorArg::from_raw_parts::<f32>(&qjl_handle, &strides, &shape, assets.line_size)
+    };
     let payload_arg = unsafe {
         TensorArg::from_raw_parts::<u32>(
             &payload_words_handle,
@@ -2176,7 +2248,11 @@ pub fn launch_turboquant_pipeline_device_from_handle_with_options<R: Runtime>(
             .expect("turboquant fused pipeline kernel launch failed");
         }
     } else {
-        let state = launch_turboquant_fused_with_input_handle(assets, input_handle, kernel_options.emit_qjl);
+        let state = launch_turboquant_fused_with_input_handle(
+            assets,
+            input_handle,
+            kernel_options.emit_qjl,
+        );
         let bitpacked = encode_device_bitpacked(&state);
         return (state, bitpacked);
     }
@@ -2260,7 +2336,11 @@ pub fn launch_turboquant_pipeline_device_with_options<R: Runtime>(
         kernel_options,
     );
     let input_handle = assets.client.create_from_slice(f32::as_bytes(input));
-    launch_turboquant_pipeline_device_from_handle_with_options(&assets, &input_handle, kernel_options)
+    launch_turboquant_pipeline_device_from_handle_with_options(
+        &assets,
+        &input_handle,
+        kernel_options,
+    )
 }
 
 /// Validate fused outputs entirely on the backend device.
@@ -2356,7 +2436,6 @@ fn read_u32_buffer<R: Runtime>(client: &ComputeClient<R>, handle: Handle) -> Vec
     u32::from_bytes(&bytes).to_vec()
 }
 
-
 /// Retrieve centroid table from cache or build it on demand.
 pub(crate) fn centroids_for(bit_width: u8, dim: usize) -> Vec<f32> {
     let cache = CENTROID_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
@@ -2432,7 +2511,7 @@ fn signed_permutation(dim: usize, seed: u64) -> (Vec<usize>, Vec<f32>) {
     perm.shuffle(&mut rng);
     let mut signs = vec![1.0_f32; dim];
     for sign in &mut signs {
-        *sign = if rng.gen_bool(0.5) { 1.0 } else { -1.0 };
+        *sign = if rng.random_bool(0.5) { 1.0 } else { -1.0 };
     }
     (perm, signs)
 }
@@ -2485,8 +2564,8 @@ fn dequantized_coordinate(
 /// Sample one standard normal value with Box-Muller transform.
 fn sample_standard_normal(rng: &mut StdRng) -> f32 {
     // Box-Muller transform with open interval for ln.
-    let u1 = rng.gen_range(f32::EPSILON..1.0_f32);
-    let u2 = rng.gen_range(0.0_f32..1.0_f32);
+    let u1 = rng.random_range(f32::EPSILON..1.0_f32);
+    let u2 = rng.random_range(0.0_f32..1.0_f32);
     (-2.0 * u1.ln()).sqrt() * (2.0 * PI * u2).cos()
 }
 

@@ -2,18 +2,18 @@ use burn::tensor::Tensor;
 use burn::tensor::TensorPrimitive;
 
 use crate::burn_ext::{turboquant_mse, turboquant_prod, TurboQuantBackendExt};
-use crate::kernels::{
-    decode_device_indices,
-    encode_device_bitpacked, encode_device_entropy,
-    launch_turboquant_fused_device_from_handle, launch_turboquant_pipeline_device_from_handle_with_options,
-    prepare_turboquant_launch_assets_with_options, DeviceEncodedPacket, DeviceFusedOutputs,
-    DeviceLaunchAssets, TurboQuantKernelOptions, TurboQuantLaunchOverride,
-};
 #[cfg(feature = "experimental-huffman")]
 use crate::kernels::{
-    AutoHuffmanCodebookPolicy, DeviceHuffmanCodebook, HuffmanCodebookReusePolicy,
     build_device_huffman_codebook, decode_device_indices_with_codebook, encode_device_huffman,
-    encode_device_huffman_with_codebook,
+    encode_device_huffman_with_codebook, AutoHuffmanCodebookPolicy, DeviceHuffmanCodebook,
+    HuffmanCodebookReusePolicy,
+};
+use crate::kernels::{
+    decode_device_indices, encode_device_bitpacked, encode_device_entropy,
+    launch_turboquant_fused_device_from_handle,
+    launch_turboquant_pipeline_device_from_handle_with_options,
+    prepare_turboquant_launch_assets_with_options, DeviceEncodedPacket, DeviceFusedOutputs,
+    DeviceLaunchAssets, TurboQuantKernelOptions, TurboQuantLaunchOverride,
 };
 
 /// Fluent Burn extension builder for `Tensor<B, 1>`.
@@ -65,7 +65,6 @@ impl<B: TurboQuantBackendExt> TurboQuantFluent<B> {
     pub fn prod(self) -> Tensor<B, 1> {
         turboquant_prod(self.tensor, self.bit_width, self.seed)
     }
-
 }
 
 /// Device-native fluent builder specialized for Burn CubeBackend tensors.
@@ -158,13 +157,14 @@ where
         }
     }
 
-    fn primitive(
-        &self,
-    ) -> burn_cubecl::tensor::CubeTensor<R> {
+    fn primitive(&self) -> burn_cubecl::tensor::CubeTensor<R> {
         match self.tensor.clone().into_primitive() {
             TensorPrimitive::Float(t) => t,
             TensorPrimitive::QFloat(t) => {
-                panic!("quantized Burn tensors are not supported in TurboQuantCubeFluent: {:?}", t.dtype)
+                panic!(
+                    "quantized Burn tensors are not supported in TurboQuantCubeFluent: {:?}",
+                    t.dtype
+                )
             }
         }
     }
@@ -237,7 +237,10 @@ where
     }
 
     #[cfg(feature = "experimental-huffman")]
-    pub fn build_huffman_codebook(&self, outputs: &DeviceFusedOutputs<R>) -> DeviceHuffmanCodebook<R> {
+    pub fn build_huffman_codebook(
+        &self,
+        outputs: &DeviceFusedOutputs<R>,
+    ) -> DeviceHuffmanCodebook<R> {
         build_device_huffman_codebook(outputs)
     }
 
@@ -355,7 +358,13 @@ where
     }
 }
 
-#[cfg(all(test, feature = "burn-ext", feature = "wgpu", feature = "wgpu-msl", target_os = "macos"))]
+#[cfg(all(
+    test,
+    feature = "burn-ext",
+    feature = "wgpu",
+    feature = "wgpu-msl",
+    target_os = "macos"
+))]
 mod tests {
     use super::*;
 
@@ -364,7 +373,10 @@ mod tests {
     fn sample_tensor() -> Tensor<B, 1> {
         let device = Default::default();
         Tensor::<B, 1>::from_data(
-            burn::tensor::TensorData::new(vec![0.1_f32, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8], [8]),
+            burn::tensor::TensorData::new(
+                vec![0.1_f32, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8],
+                [8],
+            ),
             &device,
         )
     }
@@ -405,7 +417,12 @@ mod tests {
     #[test]
     fn test_burn_cube_fluent_huffman_paths_wgpu_msl() {
         let tensor = sample_tensor();
-        let cube = tensor.clone().turboquant_cube().bit_width(4).seed(7).emit_qjl(true);
+        let cube = tensor
+            .clone()
+            .turboquant_cube()
+            .bit_width(4)
+            .seed(7)
+            .emit_qjl(true);
         let outputs = cube.launch_device();
 
         let _ = cube.huffman_device(&outputs);
@@ -422,4 +439,3 @@ mod tests {
         let _ = cube.decode_device_auto(&packet_auto, &mut auto);
     }
 }
-

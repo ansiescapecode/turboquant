@@ -1,19 +1,18 @@
 use cubecl::prelude::Runtime;
 
-use crate::kernels::{
-    decode_device_indices,
-    encode_device_bitpacked, encode_device_entropy,
-    launch_turboquant_fused_device_from_handle, launch_turboquant_fused_device_with_launch,
-    launch_turboquant_pipeline_device_with_options, launch_turboquant_pipeline_device_from_handle_with_options,
-    prepare_turboquant_launch_assets_with_options, read_fused_outputs, validate_fused_outputs_on_device,
-    DeviceEncodedPacket, DeviceFusedOutputs, DeviceLaunchAssets, TurboQuantKernelOptions,
-    TurboQuantLaunchOverride,
-};
 #[cfg(feature = "experimental-huffman")]
 use crate::kernels::{
-    AutoHuffmanCodebookPolicy, DeviceHuffmanCodebook, HuffmanCodebookReusePolicy,
     build_device_huffman_codebook, decode_device_indices_with_codebook, encode_device_huffman,
-    encode_device_huffman_with_codebook,
+    encode_device_huffman_with_codebook, AutoHuffmanCodebookPolicy, DeviceHuffmanCodebook,
+    HuffmanCodebookReusePolicy,
+};
+use crate::kernels::{
+    decode_device_indices, encode_device_bitpacked, encode_device_entropy,
+    launch_turboquant_fused_device_from_handle, launch_turboquant_fused_device_with_launch,
+    launch_turboquant_pipeline_device_from_handle_with_options,
+    launch_turboquant_pipeline_device_with_options, prepare_turboquant_launch_assets_with_options,
+    read_fused_outputs, validate_fused_outputs_on_device, DeviceEncodedPacket, DeviceFusedOutputs,
+    DeviceLaunchAssets, TurboQuantKernelOptions, TurboQuantLaunchOverride,
 };
 
 /// Fluent kernel launch builder for strict-equivalence fused execution.
@@ -195,7 +194,10 @@ impl<'a, R: Runtime> TurboQuantKernelFluent<'a, R> {
 
     /// Build a reusable Huffman codebook for this output shape.
     #[cfg(feature = "experimental-huffman")]
-    pub fn build_huffman_codebook(&self, outputs: &DeviceFusedOutputs<R>) -> DeviceHuffmanCodebook<R> {
+    pub fn build_huffman_codebook(
+        &self,
+        outputs: &DeviceFusedOutputs<R>,
+    ) -> DeviceHuffmanCodebook<R> {
         build_device_huffman_codebook(outputs)
     }
 
@@ -280,7 +282,6 @@ impl<'a, R: Runtime> TurboQuantKernelFluent<'a, R> {
     pub fn validate_on_device(&self, outputs: &DeviceFusedOutputs<R>, tolerance: f32) -> bool {
         validate_fused_outputs_on_device(self.input, self.bit_width, self.seed, outputs, tolerance)
     }
-
 }
 
 /// Start a fluent fused-kernel configuration chain.
@@ -320,7 +321,8 @@ mod tests {
         let assets = fluent.prepare_assets();
         let input_handle = assets.client.create_from_slice(f32::as_bytes(&input));
         let from_handle = fluent.launch_from_handle(&assets, &input_handle);
-        let (_state, packet_from_handle) = fluent.launch_pipeline_from_handle(&assets, &input_handle);
+        let (_state, packet_from_handle) =
+            fluent.launch_pipeline_from_handle(&assets, &input_handle);
         let _decoded2 = fluent.decode_device(&packet_from_handle);
         let _ = fluent.export_to_host(&from_handle);
         let _ = pipeline;

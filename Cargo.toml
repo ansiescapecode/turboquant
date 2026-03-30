@@ -11,13 +11,13 @@ categories = ["algorithms", "science"]
 
 [dependencies]
 cubecl = { version = "0.9.0", default-features = false }
-rand = "0.8"
+rand = "0.10.0"
 half = "2.4"
 burn = { version = "0.20.1", default-features = false, optional = true }
 burn-cubecl = { version = "0.20.1", optional = true }
 burn-wgpu = { version = "0.20.1", default-features = false, features = ["std", "metal"], optional = true }
 futures-lite = { version = "2", optional = true }
-blake3 = "1"
+blake3 = "1.8.4"
 crc32c = "0.6"
 
 [features]

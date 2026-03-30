@@ -3,16 +3,16 @@
 use std::time::Instant;
 
 use cubecl::CubeElement;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{rngs::StdRng, RngExt, SeedableRng};
 
+#[cfg(feature = "experimental-huffman")]
+use crate::kernels::encode_device_huffman;
 use crate::kernels::{
     decode_device_indices, encode_device_bitpacked, encode_device_entropy,
     launch_turboquant_fused_device_from_handle, launch_turboquant_fused_device_with_assets,
-    launch_turboquant_pipeline_device_from_handle, prepare_turboquant_launch_assets, read_fused_outputs,
-    TurboQuantLaunchOverride,
+    launch_turboquant_pipeline_device_from_handle, prepare_turboquant_launch_assets,
+    read_fused_outputs, TurboQuantLaunchOverride,
 };
-#[cfg(feature = "experimental-huffman")]
-use crate::kernels::encode_device_huffman;
 
 fn median(values: &mut [f64]) -> f64 {
     assert!(!values.is_empty(), "median requires non-empty values");
@@ -50,7 +50,9 @@ fn packet_wire_bytes<R: cubecl::Runtime>(packet: &crate::kernels::DeviceEncodedP
 }
 
 #[cfg(test)]
-fn packet_resident_bytes<R: cubecl::Runtime>(packet: &crate::kernels::DeviceEncodedPacket<R>) -> usize {
+fn packet_resident_bytes<R: cubecl::Runtime>(
+    packet: &crate::kernels::DeviceEncodedPacket<R>,
+) -> usize {
     let payload = packet.word_count * core::mem::size_of::<u32>();
     let huffman_state = if matches!(packet.encoding, crate::kernels::DeviceEncodingKind::Huffman)
         && packet.huffman_parent_handle.is_some()
@@ -102,7 +104,12 @@ pub struct KernelCodecProfile {
 }
 
 /// Profile kernel codec encode/decode paths on CPU runtime.
-pub fn kernel_codec_profile_cpu(dim: usize, samples: usize, bit_width: u8, seed: u64) -> KernelCodecProfile {
+pub fn kernel_codec_profile_cpu(
+    dim: usize,
+    samples: usize,
+    bit_width: u8,
+    seed: u64,
+) -> KernelCodecProfile {
     assert!(dim > 0, "dim must be positive");
     assert!(samples > 0, "samples must be positive");
     assert!(bit_width >= 1, "bit_width must be >= 1");
@@ -112,14 +119,15 @@ pub fn kernel_codec_profile_cpu(dim: usize, samples: usize, bit_width: u8, seed:
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
 
     let device = Default::default();
-    let assets =
-        prepare_turboquant_launch_assets::<cubecl::cpu::CpuRuntime>(&device, dim, bit_width, seed, None);
+    let assets = prepare_turboquant_launch_assets::<cubecl::cpu::CpuRuntime>(
+        &device, dim, bit_width, seed, None,
+    );
     let input_handles = dataset
         .iter()
         .map(|data| assets.client.create_from_slice(f32::as_bytes(data)))
@@ -127,16 +135,16 @@ pub fn kernel_codec_profile_cpu(dim: usize, samples: usize, bit_width: u8, seed:
 
     let mut fused_states = Vec::with_capacity(samples);
     for handle in &input_handles {
-        fused_states.push(launch_turboquant_fused_device_from_handle::<cubecl::cpu::CpuRuntime>(
-            &assets,
-            handle,
-            true,
-        ));
+        fused_states.push(launch_turboquant_fused_device_from_handle::<
+            cubecl::cpu::CpuRuntime,
+        >(&assets, handle, true));
     }
 
     fn path_timing(
         states: &[crate::kernels::DeviceFusedOutputs<cubecl::cpu::CpuRuntime>],
-        encode: impl Fn(&crate::kernels::DeviceFusedOutputs<cubecl::cpu::CpuRuntime>) -> crate::kernels::DeviceEncodedPacket<cubecl::cpu::CpuRuntime>,
+        encode: impl Fn(
+            &crate::kernels::DeviceFusedOutputs<cubecl::cpu::CpuRuntime>,
+        ) -> crate::kernels::DeviceEncodedPacket<cubecl::cpu::CpuRuntime>,
     ) -> CodecPathTiming {
         let encode_start = Instant::now();
         let packets = states.iter().map(&encode).collect::<Vec<_>>();
@@ -214,13 +222,19 @@ pub fn kernel_codec_profile_cpu(dim: usize, samples: usize, bit_width: u8, seed:
             roundtrip_qps,
         }
     };
-    let bitpacked = path_timing(&fused_states, encode_device_bitpacked::<cubecl::cpu::CpuRuntime>);
+    let bitpacked = path_timing(
+        &fused_states,
+        encode_device_bitpacked::<cubecl::cpu::CpuRuntime>,
+    );
     let delta_xor = path_timing(&fused_states, |state| {
         let packed = encode_device_bitpacked::<cubecl::cpu::CpuRuntime>(state);
         encode_device_entropy::<cubecl::cpu::CpuRuntime>(&packed)
     });
     #[cfg(feature = "experimental-huffman")]
-    let huffman = path_timing(&fused_states, encode_device_huffman::<cubecl::cpu::CpuRuntime>);
+    let huffman = path_timing(
+        &fused_states,
+        encode_device_huffman::<cubecl::cpu::CpuRuntime>,
+    );
     #[cfg(not(feature = "experimental-huffman"))]
     let huffman = CodecPathTiming {
         encode_qps: 0.0,
@@ -253,15 +267,16 @@ pub fn kernel_codec_profile_wgpu_msl(
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
 
     let device = cubecl::wgpu::WgpuDevice::default();
     init_wgpu_msl_once(&device);
-    let assets =
-        prepare_turboquant_launch_assets::<cubecl::wgpu::WgpuRuntime>(&device, dim, bit_width, seed, None);
+    let assets = prepare_turboquant_launch_assets::<cubecl::wgpu::WgpuRuntime>(
+        &device, dim, bit_width, seed, None,
+    );
     let input_handles = dataset
         .iter()
         .map(|data| assets.client.create_from_slice(f32::as_bytes(data)))
@@ -269,16 +284,16 @@ pub fn kernel_codec_profile_wgpu_msl(
 
     let mut fused_states = Vec::with_capacity(samples);
     for handle in &input_handles {
-        fused_states.push(launch_turboquant_fused_device_from_handle::<cubecl::wgpu::WgpuRuntime>(
-            &assets,
-            handle,
-            true,
-        ));
+        fused_states.push(launch_turboquant_fused_device_from_handle::<
+            cubecl::wgpu::WgpuRuntime,
+        >(&assets, handle, true));
     }
 
     fn path_timing(
         states: &[crate::kernels::DeviceFusedOutputs<cubecl::wgpu::WgpuRuntime>],
-        encode: impl Fn(&crate::kernels::DeviceFusedOutputs<cubecl::wgpu::WgpuRuntime>) -> crate::kernels::DeviceEncodedPacket<cubecl::wgpu::WgpuRuntime>,
+        encode: impl Fn(
+            &crate::kernels::DeviceFusedOutputs<cubecl::wgpu::WgpuRuntime>,
+        ) -> crate::kernels::DeviceEncodedPacket<cubecl::wgpu::WgpuRuntime>,
     ) -> CodecPathTiming {
         let encode_start = Instant::now();
         let packets = states.iter().map(&encode).collect::<Vec<_>>();
@@ -356,13 +371,19 @@ pub fn kernel_codec_profile_wgpu_msl(
             roundtrip_qps,
         }
     };
-    let bitpacked = path_timing(&fused_states, encode_device_bitpacked::<cubecl::wgpu::WgpuRuntime>);
+    let bitpacked = path_timing(
+        &fused_states,
+        encode_device_bitpacked::<cubecl::wgpu::WgpuRuntime>,
+    );
     let delta_xor = path_timing(&fused_states, |state| {
         let packed = encode_device_bitpacked::<cubecl::wgpu::WgpuRuntime>(state);
         encode_device_entropy::<cubecl::wgpu::WgpuRuntime>(&packed)
     });
     #[cfg(feature = "experimental-huffman")]
-    let huffman = path_timing(&fused_states, encode_device_huffman::<cubecl::wgpu::WgpuRuntime>);
+    let huffman = path_timing(
+        &fused_states,
+        encode_device_huffman::<cubecl::wgpu::WgpuRuntime>,
+    );
     #[cfg(not(feature = "experimental-huffman"))]
     let huffman = CodecPathTiming {
         encode_qps: 0.0,
@@ -379,7 +400,12 @@ pub fn kernel_codec_profile_wgpu_msl(
 }
 
 /// Aggregate Burn extension codec profile (CPU Cube backend).
-#[cfg(all(feature = "burn-ext", feature = "wgpu", feature = "wgpu-msl", target_os = "macos"))]
+#[cfg(all(
+    feature = "burn-ext",
+    feature = "wgpu",
+    feature = "wgpu-msl",
+    target_os = "macos"
+))]
 #[derive(Debug, Clone, Copy)]
 pub struct BurnExtCodecProfile {
     pub regular_qps: f64,
@@ -388,7 +414,12 @@ pub struct BurnExtCodecProfile {
 }
 
 /// Profile Burn extension encode/decode paths on WGPU Metal backend.
-#[cfg(all(feature = "burn-ext", feature = "wgpu", feature = "wgpu-msl", target_os = "macos"))]
+#[cfg(all(
+    feature = "burn-ext",
+    feature = "wgpu",
+    feature = "wgpu-msl",
+    target_os = "macos"
+))]
 pub fn burn_ext_codec_profile_wgpu_msl(
     dim: usize,
     samples: usize,
@@ -405,7 +436,7 @@ pub fn burn_ext_codec_profile_wgpu_msl(
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
@@ -429,24 +460,29 @@ pub fn burn_ext_codec_profile_wgpu_msl(
         last_regular = Some(out);
     }
     if let Some(out) = last_regular {
-        let _ = std::hint::black_box(out.into_data().to_vec::<f32>().expect("regular data readback"));
+        let _ = std::hint::black_box(
+            out.into_data()
+                .to_vec::<f32>()
+                .expect("regular data readback"),
+        );
     }
     let regular_elapsed = regular_start.elapsed().as_secs_f64().max(1e-9);
     let regular_qps = samples as f64 / regular_elapsed;
 
     let bitpacked = {
         let encode_start = Instant::now();
-        let encoded = tensors
-            .iter()
-            .enumerate()
-            .map(|(idx, tensor)| {
-                crate::burn_ext::turboquant_mse_encode_bitpacked::<burn_wgpu::WgpuRuntime, i32, u32>(
-                    tensor.clone(),
-                    bit_width,
-                    seed ^ (idx as u64),
-                )
-            })
-            .collect::<Vec<_>>();
+        let encoded =
+            tensors
+                .iter()
+                .enumerate()
+                .map(|(idx, tensor)| {
+                    crate::burn_ext::turboquant_mse_encode_bitpacked::<
+                        burn_wgpu::WgpuRuntime,
+                        i32,
+                        u32,
+                    >(tensor.clone(), bit_width, seed ^ (idx as u64))
+                })
+                .collect::<Vec<_>>();
         if let Some(last) = encoded.last() {
             let _ = std::hint::black_box(last.client.read_one(last.payload_words_handle.clone()));
         }
@@ -467,12 +503,11 @@ pub fn burn_ext_codec_profile_wgpu_msl(
         let roundtrip_start = Instant::now();
         let mut last = None;
         for (idx, tensor) in tensors.iter().enumerate() {
-            let packet =
-                crate::burn_ext::turboquant_mse_encode_bitpacked::<burn_wgpu::WgpuRuntime, i32, u32>(
-                    tensor.clone(),
-                    bit_width,
-                    seed ^ (idx as u64),
-                );
+            let packet = crate::burn_ext::turboquant_mse_encode_bitpacked::<
+                burn_wgpu::WgpuRuntime,
+                i32,
+                u32,
+            >(tensor.clone(), bit_width, seed ^ (idx as u64));
             let decoded = crate::burn_ext::turboquant_mse_decode_indices(&packet);
             last = Some((packet, decoded));
         }
@@ -491,12 +526,11 @@ pub fn burn_ext_codec_profile_wgpu_msl(
 
     let entropy = {
         let entropy_seed = seed ^ 0xA5A5_0000_u64;
-        let codebook =
-            crate::burn_ext::turboquant_mse_build_huffman_codebook::<burn_wgpu::WgpuRuntime, i32, u32>(
-                tensors[0].clone(),
-                bit_width,
-                entropy_seed,
-            );
+        let codebook = crate::burn_ext::turboquant_mse_build_huffman_codebook::<
+            burn_wgpu::WgpuRuntime,
+            i32,
+            u32,
+        >(tensors[0].clone(), bit_width, entropy_seed);
         let encode_start = Instant::now();
         let encoded = tensors
             .iter()
@@ -523,7 +557,9 @@ pub fn burn_ext_codec_profile_wgpu_msl(
         let decode_start = Instant::now();
         let decoded = encoded
             .iter()
-            .map(|packet| crate::burn_ext::turboquant_mse_decode_indices_with_codebook(packet, &codebook))
+            .map(|packet| {
+                crate::burn_ext::turboquant_mse_decode_indices_with_codebook(packet, &codebook)
+            })
             .collect::<Vec<_>>();
         if let (Some(packet), Some(handle)) = (encoded.last(), decoded.last()) {
             let _ = std::hint::black_box(packet.client.read_one(handle.clone()));
@@ -544,7 +580,8 @@ pub fn burn_ext_codec_profile_wgpu_msl(
                 entropy_seed ^ (idx as u64),
                 &codebook,
             );
-            let decoded = crate::burn_ext::turboquant_mse_decode_indices_with_codebook(&packet, &codebook);
+            let decoded =
+                crate::burn_ext::turboquant_mse_decode_indices_with_codebook(&packet, &codebook);
             last = Some((packet, decoded));
         }
         if let Some((packet, decoded)) = last {
@@ -591,14 +628,15 @@ pub fn fused_kernel_throughput_cpu(dim: usize, samples: usize, bit_width: u8, se
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
 
     let device = Default::default();
-    let assets =
-        prepare_turboquant_launch_assets::<cubecl::cpu::CpuRuntime>(&device, dim, bit_width, seed, None);
+    let assets = prepare_turboquant_launch_assets::<cubecl::cpu::CpuRuntime>(
+        &device, dim, bit_width, seed, None,
+    );
     let start = Instant::now();
     for data in &dataset {
         let outputs = launch_turboquant_fused_device_with_assets::<cubecl::cpu::CpuRuntime>(
@@ -630,7 +668,7 @@ pub fn fused_kernel_throughput_cpu_with_cube_dim(
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
@@ -677,7 +715,7 @@ pub fn fused_kernel_dispatch_throughput_cpu_with_cube_dim(
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
@@ -724,14 +762,15 @@ pub fn pipeline_device_timing_cpu(
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
 
     let device = Default::default();
-    let assets =
-        prepare_turboquant_launch_assets::<cubecl::cpu::CpuRuntime>(&device, dim, bit_width, seed, None);
+    let assets = prepare_turboquant_launch_assets::<cubecl::cpu::CpuRuntime>(
+        &device, dim, bit_width, seed, None,
+    );
     let input_handles = dataset
         .iter()
         .map(|data| assets.client.create_from_slice(f32::as_bytes(data)))
@@ -739,12 +778,9 @@ pub fn pipeline_device_timing_cpu(
     let mut last_packet = None;
     let dispatch_start = Instant::now();
     for input_handle in &input_handles {
-        let (_state, packet) = launch_turboquant_pipeline_device_from_handle::<cubecl::cpu::CpuRuntime>(
-            &assets,
-            std::hint::black_box(input_handle),
-            true,
-            entropy,
-        );
+        let (_state, packet) = launch_turboquant_pipeline_device_from_handle::<
+            cubecl::cpu::CpuRuntime,
+        >(&assets, std::hint::black_box(input_handle), true, entropy);
         last_packet = Some(packet);
     }
     let dispatch_elapsed = dispatch_start.elapsed().as_secs_f64().max(1e-9);
@@ -783,7 +819,8 @@ pub fn autotune_cube_dim_cpu(
     let mut results = Vec::with_capacity(candidates.len());
     let mut best = (candidates[0], f64::NEG_INFINITY);
     for &cube_dim in candidates {
-        let qps = fused_kernel_throughput_cpu_with_cube_dim(dim, samples, bit_width, seed, cube_dim);
+        let qps =
+            fused_kernel_throughput_cpu_with_cube_dim(dim, samples, bit_width, seed, cube_dim);
         if qps > best.1 {
             best = (cube_dim, qps);
         }
@@ -807,7 +844,9 @@ pub fn autotune_cube_dim_cpu_profiled(
     for _ in 0..warmup_rounds {
         for &cube_dim in candidates {
             if readback_each_iteration {
-                let _ = fused_kernel_throughput_cpu_with_cube_dim(dim, samples, bit_width, seed, cube_dim);
+                let _ = fused_kernel_throughput_cpu_with_cube_dim(
+                    dim, samples, bit_width, seed, cube_dim,
+                );
             } else {
                 let _ = fused_kernel_dispatch_throughput_cpu_with_cube_dim(
                     dim, samples, bit_width, seed, cube_dim,
@@ -859,7 +898,7 @@ pub fn fused_kernel_throughput_wgpu_msl(
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
@@ -902,7 +941,7 @@ pub fn fused_kernel_throughput_wgpu_msl_with_cube_dim(
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
@@ -949,7 +988,7 @@ pub fn fused_kernel_dispatch_throughput_wgpu_msl_with_cube_dim(
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
@@ -999,7 +1038,7 @@ pub fn pipeline_device_timing_wgpu_msl(
     for _ in 0..samples {
         let mut data = vec![0.0_f32; dim];
         for value in &mut data {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         dataset.push(data);
     }
@@ -1017,12 +1056,9 @@ pub fn pipeline_device_timing_wgpu_msl(
     let mut last_packet = None;
     let dispatch_start = Instant::now();
     for input_handle in &input_handles {
-        let (_state, packet) = launch_turboquant_pipeline_device_from_handle::<cubecl::wgpu::WgpuRuntime>(
-            &assets,
-            std::hint::black_box(input_handle),
-            true,
-            entropy,
-        );
+        let (_state, packet) = launch_turboquant_pipeline_device_from_handle::<
+            cubecl::wgpu::WgpuRuntime,
+        >(&assets, std::hint::black_box(input_handle), true, entropy);
         last_packet = Some(packet);
     }
     let dispatch_elapsed = dispatch_start.elapsed().as_secs_f64().max(1e-9);
@@ -1088,8 +1124,9 @@ pub fn autotune_cube_dim_wgpu_msl_profiled(
     for _ in 0..warmup_rounds {
         for &cube_dim in candidates {
             if readback_each_iteration {
-                let _ =
-                    fused_kernel_throughput_wgpu_msl_with_cube_dim(dim, samples, bit_width, seed, cube_dim);
+                let _ = fused_kernel_throughput_wgpu_msl_with_cube_dim(
+                    dim, samples, bit_width, seed, cube_dim,
+                );
             } else {
                 let _ = fused_kernel_dispatch_throughput_wgpu_msl_with_cube_dim(
                     dim, samples, bit_width, seed, cube_dim,
@@ -1126,9 +1163,9 @@ pub fn autotune_cube_dim_wgpu_msl_profiled(
 
 #[cfg(test)]
 mod tests {
-    use cubecl::CubeElement;
     use cubecl::prelude::Runtime;
-    use rand::{Rng, SeedableRng};
+    use cubecl::CubeElement;
+    use rand::{RngExt, SeedableRng};
 
     use super::{
         autotune_cube_dim_cpu, fused_kernel_throughput_cpu, kernel_codec_profile_cpu,
@@ -1263,7 +1300,12 @@ mod tests {
         );
     }
 
-    #[cfg(all(feature = "burn-ext", feature = "wgpu", feature = "wgpu-msl", target_os = "macos"))]
+    #[cfg(all(
+        feature = "burn-ext",
+        feature = "wgpu",
+        feature = "wgpu-msl",
+        target_os = "macos"
+    ))]
     #[test]
     #[ignore = "profiling report test; run manually with --ignored --nocapture"]
     fn print_profile_report_wgpu_msl_codecs_burn_ext() {
@@ -1346,7 +1388,7 @@ mod tests {
             for _ in 0..samples {
                 let mut data = vec![0.0_f32; dim];
                 for value in &mut data {
-                    *value = rng.gen_range(-1.0_f32..1.0_f32);
+                    *value = rng.random_range(-1.0_f32..1.0_f32);
                 }
                 dataset.push(data);
             }
@@ -1374,16 +1416,18 @@ mod tests {
             let mut delta_resident = 0usize;
             let mut huffman_wire = 0usize;
             let mut huffman_resident_packet_only = 0usize;
-            let codebook =
-                crate::kernels::build_device_huffman_codebook::<cubecl::cpu::CpuRuntime>(&states[0]);
+            let codebook = crate::kernels::build_device_huffman_codebook::<cubecl::cpu::CpuRuntime>(
+                &states[0],
+            );
             let codebook_resident = super::huffman_codebook_resident_bytes(&codebook);
             for state in &states {
                 let bit = super::encode_device_bitpacked::<cubecl::cpu::CpuRuntime>(state);
                 let delta = super::encode_device_entropy::<cubecl::cpu::CpuRuntime>(&bit);
-                let huff = crate::kernels::encode_device_huffman_with_codebook::<cubecl::cpu::CpuRuntime>(
-                    state, &codebook,
-                );
-                let _decoded = crate::kernels::decode_device_indices_with_codebook(&huff, Some(&codebook));
+                let huff = crate::kernels::encode_device_huffman_with_codebook::<
+                    cubecl::cpu::CpuRuntime,
+                >(state, &codebook);
+                let _decoded =
+                    crate::kernels::decode_device_indices_with_codebook(&huff, Some(&codebook));
 
                 bitpacked_wire += super::packet_wire_bytes(&bit);
                 bitpacked_resident += super::packet_resident_bytes(&bit);
@@ -1398,7 +1442,8 @@ mod tests {
             let avg_huffman_wire = huffman_wire as f64 / samples as f64;
             let avg_bitpacked_resident = bitpacked_resident as f64 / samples as f64;
             let avg_delta_resident = delta_resident as f64 / samples as f64;
-            let avg_huffman_resident_packet_only = huffman_resident_packet_only as f64 / samples as f64;
+            let avg_huffman_resident_packet_only =
+                huffman_resident_packet_only as f64 / samples as f64;
             let avg_huffman_resident_with_shared_codebook =
                 avg_huffman_resident_packet_only + (codebook_resident as f64 / samples as f64);
 
@@ -1454,7 +1499,12 @@ mod tests {
         }
     }
 
-    #[cfg(all(feature = "burn-ext", feature = "wgpu", feature = "wgpu-msl", target_os = "macos"))]
+    #[cfg(all(
+        feature = "burn-ext",
+        feature = "wgpu",
+        feature = "wgpu-msl",
+        target_os = "macos"
+    ))]
     #[test]
     #[ignore = "profiling report test; run manually with --ignored --nocapture"]
     fn print_profile_report_wgpu_msl_codec_memory_kv_models_burn_ext() {
@@ -1490,35 +1540,28 @@ mod tests {
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed ^ 0x123456_u64);
             let mut data = vec![0.0_f32; dim];
             for value in &mut data {
-                *value = rng.gen_range(-1.0_f32..1.0_f32);
+                *value = rng.random_range(-1.0_f32..1.0_f32);
             }
 
             let tensor = burn::tensor::Tensor::<B, 1>::from_data(
                 burn::tensor::TensorData::new(data, [dim]),
                 &device,
             );
-            let bit =
-                crate::burn_ext::turboquant_mse_encode_bitpacked::<burn_wgpu::WgpuRuntime, i32, u32>(
-                    tensor.clone(),
-                    bit_width,
-                    seed,
-                );
-            let codebook =
-                crate::burn_ext::turboquant_mse_build_huffman_codebook::<burn_wgpu::WgpuRuntime, i32, u32>(
-                    tensor.clone(),
-                    bit_width,
-                    seed ^ 0xABC0,
-                );
+            let bit = crate::burn_ext::turboquant_mse_encode_bitpacked::<
+                burn_wgpu::WgpuRuntime,
+                i32,
+                u32,
+            >(tensor.clone(), bit_width, seed);
+            let codebook = crate::burn_ext::turboquant_mse_build_huffman_codebook::<
+                burn_wgpu::WgpuRuntime,
+                i32,
+                u32,
+            >(tensor.clone(), bit_width, seed ^ 0xABC0);
             let ent = crate::burn_ext::turboquant_mse_encode_entropy_with_codebook::<
                 burn_wgpu::WgpuRuntime,
                 i32,
                 u32,
-            >(
-                tensor,
-                bit_width,
-                seed ^ 0xABC0,
-                &codebook,
-            );
+            >(tensor, bit_width, seed ^ 0xABC0, &codebook);
 
             let regular_kv_fp16_total = (case.layers * dim * core::mem::size_of::<u16>()) as f64;
             let regular_indices_per_layer = (dim * core::mem::size_of::<u32>()) as f64;
@@ -1570,7 +1613,10 @@ mod tests {
             device.dispatch_qps
         );
         println!("profile.wgpu_msl.device.sync_qps={:.3}", device.sync_qps);
-        println!("profile.wgpu_msl.device.export_qps={:.3}", device.export_qps);
+        println!(
+            "profile.wgpu_msl.device.export_qps={:.3}",
+            device.export_qps
+        );
     }
 
     #[test]
@@ -1653,9 +1699,7 @@ mod tests {
         for (cube_dim, qps) in results {
             println!("profile.wgpu_msl.autotune.cube_dim={cube_dim} fused_qps={qps:.3}");
         }
-        println!(
-            "profile.wgpu_msl.autotune.best_cube_dim={best_dim} fused_qps={best_qps:.3}"
-        );
+        println!("profile.wgpu_msl.autotune.best_cube_dim={best_dim} fused_qps={best_qps:.3}");
     }
 
     #[cfg(all(feature = "wgpu", feature = "wgpu-msl", target_os = "macos"))]
@@ -1663,9 +1707,8 @@ mod tests {
     #[ignore = "profiling report test; run manually with --ignored --nocapture"]
     fn print_profile_report_wgpu_msl_autotune_cube_dim_median_modes() {
         let candidates = [2_u32, 4, 8, 16, 32, 64, 128];
-        let (best_e2e_dim, best_e2e_qps, e2e) = super::autotune_cube_dim_wgpu_msl_profiled(
-            2048, 48, 4, 477, &candidates, 1, 3, true,
-        );
+        let (best_e2e_dim, best_e2e_qps, e2e) =
+            super::autotune_cube_dim_wgpu_msl_profiled(2048, 48, 4, 477, &candidates, 1, 3, true);
         for (cube_dim, qps) in e2e {
             println!("profile.wgpu_msl.autotune_median.e2e.cube_dim={cube_dim} fused_qps={qps:.3}");
         }
@@ -1684,5 +1727,4 @@ mod tests {
             "profile.wgpu_msl.autotune_median.dispatch.best_cube_dim={best_dispatch_dim} fused_qps={best_dispatch_qps:.3}"
         );
     }
-
 }

@@ -1,6 +1,5 @@
 use super::*;
-use rand::{rngs::StdRng, Rng, SeedableRng};
-
+use rand::{rngs::StdRng, SeedableRng};
 
 #[cfg(feature = "cpu")]
 #[test]
@@ -18,7 +17,7 @@ fn test_fused_launch_cpu_runtime() {
     let mut rng = StdRng::seed_from_u64(404);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-0.5_f32..0.5_f32);
+        *value = rng.random_range(-0.5_f32..0.5_f32);
     }
 
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -37,7 +36,10 @@ fn test_fused_launch_cpu_runtime() {
         let expected = mse_expected[i];
         assert!((mse[i] - expected).abs() <= 1e-6, "mse mismatch at {i}");
         let expected_sign = packet.qjl_signs[i] as f32;
-        assert!((qjl[i] - expected_sign).abs() <= 1e-6, "qjl mismatch at {i}");
+        assert!(
+            (qjl[i] - expected_sign).abs() <= 1e-6,
+            "qjl mismatch at {i}"
+        );
     }
 }
 
@@ -50,7 +52,7 @@ fn test_fused_launch_cpu_runtime_device_validation() {
     let mut rng = StdRng::seed_from_u64(1404);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-0.5_f32..0.5_f32);
+        *value = rng.random_range(-0.5_f32..0.5_f32);
     }
 
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -70,8 +72,13 @@ fn test_fused_launch_cpu_runtime_device_validation() {
 #[should_panic(expected = "bit_width must be >= 1")]
 fn test_fused_launch_cpu_runtime_rejects_zero_bit_width() {
     let input = vec![0.1_f32, -0.2, 0.3, 0.4];
-    let _ =
-        launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(&Default::default(), &input, 0, 11, true);
+    let _ = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
+        &Default::default(),
+        &input,
+        0,
+        11,
+        true,
+    );
 }
 
 #[cfg(feature = "cpu")]
@@ -89,7 +96,7 @@ fn test_fused_launch_cpu_runtime_strict_equivalence_sweep() {
 
         let mut input = vec![0.0_f32; dim];
         for value in &mut input {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
 
         let packet = quantize_prod(&input, bit_width, seed);
@@ -136,7 +143,7 @@ fn test_host_reference_quantize_dequantize_roundtrips_cpu() {
     let mut rng = StdRng::seed_from_u64(0xABCDEF01);
     let mut input = vec![0.0_f32; 32];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
 
     let mse_packet = quantize_mse(&input, 4, 55);
@@ -152,8 +159,13 @@ fn test_host_reference_quantize_dequantize_roundtrips_cpu() {
 #[test]
 fn test_host_fused_launch_wrapper_cpu() {
     let input = vec![0.1_f32, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8];
-    let (mse, qjl) =
-        launch_turboquant_fused::<cubecl::cpu::CpuRuntime>(&Default::default(), &input, 4, 123, true);
+    let (mse, qjl) = launch_turboquant_fused::<cubecl::cpu::CpuRuntime>(
+        &Default::default(),
+        &input,
+        4,
+        123,
+        true,
+    );
     assert_eq!(mse.len(), input.len());
     assert_eq!(qjl.len(), input.len());
 }
@@ -167,7 +179,7 @@ fn test_device_packet_pipeline_roundtrip_indices_cpu() {
     let mut rng = StdRng::seed_from_u64(0xBEEF);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
 
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -196,7 +208,7 @@ fn test_xor_decode_rejects_payload_corruption_cpu() {
     let mut rng = StdRng::seed_from_u64(0xABCD0001);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
 
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -209,7 +221,9 @@ fn test_xor_decode_rejects_payload_corruption_cpu() {
     let bitpacked = encode_device_bitpacked(&outputs);
     let entropy = encode_device_entropy(&bitpacked);
 
-    let payload_bytes = entropy.client.read_one(entropy.payload_words_handle.clone());
+    let payload_bytes = entropy
+        .client
+        .read_one(entropy.payload_words_handle.clone());
     let mut words = u32::from_bytes(&payload_bytes).to_vec();
     if let Some(first) = words.get_mut(0) {
         *first ^= 0x01;
@@ -248,7 +262,7 @@ fn test_xor_decode_rejects_valid_bits_mismatch_cpu() {
     let mut rng = StdRng::seed_from_u64(0xABCD0002);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
 
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -294,7 +308,7 @@ fn test_device_huffman_roundtrip_indices_cpu() {
     let mut rng = StdRng::seed_from_u64(0x1234ABCD);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
 
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -320,7 +334,7 @@ fn test_device_huffman_roundtrip_with_shared_codebook_cpu() {
     let mut rng = StdRng::seed_from_u64(0x1234ABCE);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
 
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -333,11 +347,19 @@ fn test_device_huffman_roundtrip_with_shared_codebook_cpu() {
     let expected = read_fused_indices(&outputs);
     let codebook = build_device_huffman_codebook(&outputs);
     let huffman = encode_device_huffman_with_codebook(&outputs, &codebook);
-    let decoded =
-        read_u32_buffer(&huffman.client, decode_device_indices_with_codebook(&huffman, Some(&codebook)));
+    let decoded = read_u32_buffer(
+        &huffman.client,
+        decode_device_indices_with_codebook(&huffman, Some(&codebook)),
+    );
 
-    assert_eq!(decoded, expected, "device huffman shared-codebook roundtrip mismatch");
-    assert!(huffman.huffman_parent_handle.is_none(), "shared codebook packets should not embed tree");
+    assert_eq!(
+        decoded, expected,
+        "device huffman shared-codebook roundtrip mismatch"
+    );
+    assert!(
+        huffman.huffman_parent_handle.is_none(),
+        "shared codebook packets should not embed tree"
+    );
 }
 
 #[cfg(all(feature = "cpu", feature = "experimental-huffman"))]
@@ -349,7 +371,7 @@ fn test_device_huffman_policy_rebuild_cadence_cpu() {
     let mut rng = StdRng::seed_from_u64(0x1234ABCF);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
 
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -386,7 +408,7 @@ fn test_device_huffman_policy_auto_roundtrip_cpu() {
     let mut rng = StdRng::seed_from_u64(0x1234ABD0);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
 
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -457,7 +479,7 @@ fn test_auto_policy_roundtrip_tiny_dims_cpu() {
         let mut rng = StdRng::seed_from_u64(0xB001_u64 + i as u64);
         let mut input = vec![0.0_f32; *dim];
         for value in &mut input {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
             &Default::default(),
@@ -482,7 +504,7 @@ fn test_auto_policy_roundtrip_uniform_like_cpu() {
     let mut rng = StdRng::seed_from_u64(0x12345678);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
         &Default::default(),
@@ -507,7 +529,7 @@ fn test_auto_policy_handles_bit_width_and_dim_changes_cpu() {
 
     let mut input_a = vec![0.0_f32; 64];
     for value in &mut input_a {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
     let outputs_a = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
         &Default::default(),
@@ -524,7 +546,7 @@ fn test_auto_policy_handles_bit_width_and_dim_changes_cpu() {
 
     let mut input_b = vec![0.0_f32; 96];
     for value in &mut input_b {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
     let outputs_b = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
         &Default::default(),
@@ -565,10 +587,14 @@ fn test_auto_policy_long_run_drift_roundtrip_cpu() {
         let mut input = vec![0.0_f32; dim];
         for value in &mut input {
             if step < 64 {
-                *value = rng.gen_range(-0.05_f32..0.05_f32);
+                *value = rng.random_range(-0.05_f32..0.05_f32);
             } else {
-                let sign = if rng.gen_range(0_u32..2_u32) == 0 { -1.0_f32 } else { 1.0_f32 };
-                *value = sign * rng.gen_range(0.6_f32..1.0_f32);
+                let sign = if rng.random_range(0_u32..2_u32) == 0 {
+                    -1.0_f32
+                } else {
+                    1.0_f32
+                };
+                *value = sign * rng.random_range(0.6_f32..1.0_f32);
             }
         }
         let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -581,7 +607,10 @@ fn test_auto_policy_long_run_drift_roundtrip_cpu() {
         let expected = read_fused_indices(&outputs);
         let packet = policy.encode(&outputs);
         let decoded = read_u32_buffer(&packet.client, policy.decode(&packet));
-        assert_eq!(decoded, expected, "auto policy drift mismatch at step={step}");
+        assert_eq!(
+            decoded, expected,
+            "auto policy drift mismatch at step={step}"
+        );
     }
 }
 
@@ -594,7 +623,7 @@ fn test_auto_policy_rebuild_boundary_cpu() {
     let mut rng = StdRng::seed_from_u64(0x55667788_u64);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
         &Default::default(),
@@ -640,7 +669,7 @@ fn test_auto_policy_decode_before_encode_fallback_cpu() {
     let mut rng = StdRng::seed_from_u64(0x1020_3040_u64);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
         &Default::default(),
@@ -666,7 +695,7 @@ fn test_auto_policy_invalidate_then_rebuild_cpu() {
     let mut rng = StdRng::seed_from_u64(0x2030_4050_u64);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
         &Default::default(),
@@ -704,7 +733,7 @@ fn test_huffman_decode_without_written_bits_handle_uses_valid_bits_cpu() {
     let mut rng = StdRng::seed_from_u64(0x3040_5060_u64);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
 
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
@@ -746,7 +775,10 @@ fn test_huffman_decode_without_written_bits_handle_uses_valid_bits_cpu() {
     assert_eq!(decoded, expected);
 
     let packet_bytes = huffman_packet_wire_bytes(&packet_without_written);
-    assert_eq!(packet_bytes, bits_to_bytes(packet_without_written.valid_bits as usize));
+    assert_eq!(
+        packet_bytes,
+        bits_to_bytes(packet_without_written.valid_bits as usize)
+    );
 }
 
 #[cfg(all(feature = "cpu", feature = "experimental-huffman"))]
@@ -757,7 +789,7 @@ fn test_auto_policy_large_dim_stress_cpu() {
     let mut rng = StdRng::seed_from_u64(0x4050_6070_u64);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
         &Default::default(),
@@ -790,7 +822,7 @@ fn test_auto_policy_cadence_bounds_cpu() {
         let mut rng = StdRng::seed_from_u64(seed ^ 0xF0F0_u64);
         let mut input = vec![0.0_f32; dim];
         for value in &mut input {
-            *value = rng.gen_range(-1.0_f32..1.0_f32);
+            *value = rng.random_range(-1.0_f32..1.0_f32);
         }
         let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
             &Default::default(),
@@ -825,7 +857,7 @@ fn test_auto_policy_decode_rejects_wrong_policy_cpu() {
     let mut rng = StdRng::seed_from_u64(0x51525354_u64);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
     let outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
         &Default::default(),
@@ -852,12 +884,13 @@ fn test_device_pipeline_fused_kernel_matches_staged_kernels_cpu() {
     let mut rng = StdRng::seed_from_u64(0x1234_5678);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
     let device = Default::default();
 
-    let staged_outputs =
-        launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(&device, &input, bit_width, seed, true);
+    let staged_outputs = launch_turboquant_fused_device::<cubecl::cpu::CpuRuntime>(
+        &device, &input, bit_width, seed, true,
+    );
     let staged_encoded = encode_device_entropy(&encode_device_bitpacked(&staged_outputs));
     let staged_indices = read_u32_buffer(
         &staged_encoded.client,
@@ -865,17 +898,14 @@ fn test_device_pipeline_fused_kernel_matches_staged_kernels_cpu() {
     );
 
     let (fused_outputs, fused_packet) = launch_turboquant_pipeline_device::<cubecl::cpu::CpuRuntime>(
-        &device,
-        &input,
-        bit_width,
-        seed,
-        true,
-        None,
-        true,
+        &device, &input, bit_width, seed, true, None, true,
     );
     let fused_indices = read_u32_buffer(&fused_packet.client, decode_device_indices(&fused_packet));
 
-    assert_eq!(read_fused_indices(&fused_outputs), read_fused_indices(&staged_outputs));
+    assert_eq!(
+        read_fused_indices(&fused_outputs),
+        read_fused_indices(&staged_outputs)
+    );
     assert_eq!(fused_indices, staged_indices);
 }
 
@@ -888,7 +918,7 @@ fn test_device_pipeline_from_handle_stays_device_native_cpu() {
     let mut rng = StdRng::seed_from_u64(0xCAFE_BABE);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
     let device = Default::default();
 
@@ -896,12 +926,8 @@ fn test_device_pipeline_from_handle_stays_device_native_cpu() {
         &device, dim, bit_width, seed, None,
     );
     let input_handle = assets.client.create_from_slice(f32::as_bytes(&input));
-    let (_state, encoded) = launch_turboquant_pipeline_device_from_handle(
-        &assets,
-        &input_handle,
-        true,
-        true,
-    );
+    let (_state, encoded) =
+        launch_turboquant_pipeline_device_from_handle(&assets, &input_handle, true, true);
     let decoded_indices = read_u32_buffer(&encoded.client, decode_device_indices(&encoded));
     assert_eq!(decoded_indices.len(), dim);
 }
@@ -915,7 +941,7 @@ fn test_fluent_kernel_api_matches_direct_launch() {
     let dim = 48usize;
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-1.0_f32..1.0_f32);
+        *value = rng.random_range(-1.0_f32..1.0_f32);
     }
 
     let device = Default::default();
@@ -935,7 +961,6 @@ fn test_fluent_kernel_api_matches_direct_launch() {
     assert!(fluent.validate_on_device(&fluent_outputs, 1e-6));
 }
 
-
 #[cfg(all(feature = "wgpu", feature = "wgpu-msl"))]
 #[test]
 fn test_wgpu_msl_runtime_gate() {
@@ -952,14 +977,15 @@ fn test_fused_launch_wgpu_msl_runtime() {
     let mut rng = StdRng::seed_from_u64(505);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-0.5_f32..0.5_f32);
+        *value = rng.random_range(-0.5_f32..0.5_f32);
     }
 
     let device = cubecl::wgpu::WgpuDevice::DefaultDevice;
     init_wgpu_msl_once(&device);
 
-    let outputs =
-        launch_turboquant_fused_device::<cubecl::wgpu::WgpuRuntime>(&device, &input, bit_width, seed, true);
+    let outputs = launch_turboquant_fused_device::<cubecl::wgpu::WgpuRuntime>(
+        &device, &input, bit_width, seed, true,
+    );
     let (mse_rot, qjl) = read_fused_outputs(&outputs);
     let mse = invert_signed_permutation(&mse_rot, dim, seed ^ MSE_ROTATION_SALT);
     let packet = quantize_prod(&input, bit_width, seed);
@@ -969,7 +995,10 @@ fn test_fused_launch_wgpu_msl_runtime() {
         let expected = mse_expected[i];
         assert!((mse[i] - expected).abs() <= 1e-3, "mse mismatch at {i}");
         let expected_sign = packet.qjl_signs[i] as f32;
-        assert!((qjl[i] - expected_sign).abs() <= 1e-3, "qjl mismatch at {i}");
+        assert!(
+            (qjl[i] - expected_sign).abs() <= 1e-3,
+            "qjl mismatch at {i}"
+        );
     }
 }
 
@@ -982,20 +1011,26 @@ fn test_fused_launch_wgpu_msl_runtime_device_validation() {
     let mut rng = StdRng::seed_from_u64(1505);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-0.5_f32..0.5_f32);
+        *value = rng.random_range(-0.5_f32..0.5_f32);
     }
 
     let device = cubecl::wgpu::WgpuDevice::DefaultDevice;
     init_wgpu_msl_once(&device);
 
-    let outputs =
-        launch_turboquant_fused_device::<cubecl::wgpu::WgpuRuntime>(&device, &input, bit_width, seed, true);
+    let outputs = launch_turboquant_fused_device::<cubecl::wgpu::WgpuRuntime>(
+        &device, &input, bit_width, seed, true,
+    );
 
     let ok = validate_fused_outputs_on_device(&input, bit_width, seed, &outputs, 1e-3);
     assert!(ok, "on-device validation failed for wgpu-msl runtime");
 }
 
-#[cfg(all(feature = "wgpu", feature = "wgpu-msl", feature = "experimental-huffman", target_os = "macos"))]
+#[cfg(all(
+    feature = "wgpu",
+    feature = "wgpu-msl",
+    feature = "experimental-huffman",
+    target_os = "macos"
+))]
 #[test]
 fn test_auto_policy_roundtrip_wgpu_msl() {
     let dim = 96usize;
@@ -1004,13 +1039,14 @@ fn test_auto_policy_roundtrip_wgpu_msl() {
     let mut rng = StdRng::seed_from_u64(0x99887766_u64);
     let mut input = vec![0.0_f32; dim];
     for value in &mut input {
-        *value = rng.gen_range(-0.8_f32..0.8_f32);
+        *value = rng.random_range(-0.8_f32..0.8_f32);
     }
 
     let device = cubecl::wgpu::WgpuDevice::DefaultDevice;
     init_wgpu_msl_once(&device);
-    let outputs =
-        launch_turboquant_fused_device::<cubecl::wgpu::WgpuRuntime>(&device, &input, bit_width, seed, true);
+    let outputs = launch_turboquant_fused_device::<cubecl::wgpu::WgpuRuntime>(
+        &device, &input, bit_width, seed, true,
+    );
     let expected = read_fused_indices(&outputs);
 
     let mut policy = AutoHuffmanCodebookPolicy::<cubecl::wgpu::WgpuRuntime>::new();
