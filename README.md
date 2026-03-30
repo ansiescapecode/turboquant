@@ -11,26 +11,26 @@ If you choose to run this kernel, you do so knowing that you are using something
 
 ## Project files
 
-- `LICENSE`: project license.
-- `CONTRIBUTING.md`: contributor workflow and required checks.
-- `SECURITY.md`: security reporting policy.
-- `CHANGELOG.md`: release history.
+- [`LICENSE`](LICENSE): project license.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): contributor workflow and required checks.
+- [`SECURITY.md`](SECURITY.md): security reporting policy.
+- [`CHANGELOG.md`](CHANGELOG.md): release history.
 
 ## Paper citations for code
 
 Primary paper reference:
 
-- `docs/references/turboquant.pdf`
+- [`docs/references/turboquant.pdf`](docs/references/turboquant.pdf)
 
 ## Profiling reports
 
-- `docs/reports/profiling-2026-03-30.md`
-- `docs/reports/performance-tuning-playbook.md`
-- `docs/reports/device-boundary-map.md`
+- [`docs/reports/profiling-2026-03-30.md`](docs/reports/profiling-2026-03-30.md)
+- [`docs/reports/performance-tuning-playbook.md`](docs/reports/performance-tuning-playbook.md)
+- [`docs/reports/device-boundary-map.md`](docs/reports/device-boundary-map.md)
 
 ## Measured codec snapshot
 
-All values below are measured from repository tests (not paper estimates). Full raw output, formulas, and workload definitions are in `docs/reports/profiling-2026-03-30.md`.
+All values below are measured from repository tests (not paper estimates). Full raw output, formulas, and workload definitions are in [`docs/reports/profiling-2026-03-30.md`](docs/reports/profiling-2026-03-30.md).
 
 ### Speed (QPS)
 
@@ -42,7 +42,7 @@ All values below are measured from repository tests (not paper estimates). Full 
 
 ### Compression (memory savings)
 
-Exact measured savings versus regular fp16 KV cache and regular u32 index buffers (from `docs/reports/profiling-2026-03-30.md`):
+Exact measured savings versus regular fp16 KV cache and regular u32 index buffers (from [`docs/reports/profiling-2026-03-30.md`](docs/reports/profiling-2026-03-30.md)):
 
 | Model shape | Bitpacked save vs KV | Huffman/entropy save vs KV | Bitpacked save vs u32 indices | Huffman/entropy save vs u32 indices | Huffman/entropy wire ratio vs bitpacked |
 | --- | ---: | ---: | ---: | ---: | ---: |
