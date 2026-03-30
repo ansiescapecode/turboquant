@@ -1228,6 +1228,12 @@ pub struct AutoHuffmanCodebookPolicy<R: Runtime> {
     last_bit_width: Option<u8>,
 }
 
+impl<R: Runtime> Default for AutoHuffmanCodebookPolicy<R> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<R: Runtime> AutoHuffmanCodebookPolicy<R> {
     /// Create a new automatic policy.
     pub fn new() -> Self {

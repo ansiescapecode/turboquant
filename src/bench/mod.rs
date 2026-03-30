@@ -18,7 +18,7 @@ fn median(values: &mut [f64]) -> f64 {
     assert!(!values.is_empty(), "median requires non-empty values");
     values.sort_by(|a, b| a.total_cmp(b));
     let mid = values.len() / 2;
-    if values.len().is_multiple_of(2) {
+    if values.len() % 2 == 0 {
         (values[mid - 1] + values[mid]) * 0.5
     } else {
         values[mid]
@@ -830,6 +830,7 @@ pub fn autotune_cube_dim_cpu(
 }
 
 /// Run repeated CPU autotune sweeps and return medians per candidate.
+#[allow(clippy::too_many_arguments)]
 pub fn autotune_cube_dim_cpu_profiled(
     dim: usize,
     samples: usize,

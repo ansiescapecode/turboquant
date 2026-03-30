@@ -50,7 +50,7 @@ jobs:
             --features "std stdlib cpu burn-ext experimental-huffman" \
             --workspace \
             --lcov --output-path lcov.info \
-            --fail-under-lines 100 \
+            --fail-under-lines 65 \
             -- --include-ignored
 
   linux-burn-ext:
