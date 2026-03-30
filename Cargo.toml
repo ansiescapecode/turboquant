@@ -15,10 +15,15 @@ rand = "0.10.0"
 half = "2.4"
 burn = { version = "0.20.1", default-features = false, optional = true }
 burn-cubecl = { version = "0.20.1", optional = true }
-burn-wgpu = { version = "0.20.1", default-features = false, features = ["std", "metal"], optional = true }
 futures-lite = { version = "2", optional = true }
 blake3 = "1.8.4"
 crc32c = "0.6"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+burn-wgpu = { version = "0.20.1", default-features = false, features = ["std", "metal"], optional = true }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+burn-wgpu = { version = "0.20.1", default-features = false, features = ["std"], optional = true }
 
 [features]
 default = ["std", "stdlib", "cpu", "wgpu", "wgpu-msl"]
