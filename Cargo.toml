@@ -1,0 +1,49 @@
+[package]
+name = "turboquant"
+version = "0.1.0"
+edition = "2021"
+description = "TurboQuant reference implementation with strict-equivalence kernel and Burn APIs."
+license = "MIT"
+readme = "README.md"
+rust-version = "1.79"
+keywords = ["quantization", "vector", "burn", "cubecl", "ann"]
+categories = ["algorithms", "science"]
+
+[dependencies]
+cubecl = { version = "0.9.0", default-features = false }
+rand = "0.8"
+half = "2.4"
+burn = { version = "0.20.1", default-features = false, optional = true }
+burn-cubecl = { version = "0.20.1", optional = true }
+burn-wgpu = { version = "0.20.1", default-features = false, features = ["std", "metal"], optional = true }
+futures-lite = { version = "2", optional = true }
+blake3 = "1"
+crc32c = "0.6"
+
+[features]
+default = ["std", "stdlib", "cpu", "wgpu", "wgpu-msl"]
+std = ["cubecl/std"]
+stdlib = ["cubecl/stdlib"]
+cuda = ["cubecl/cuda"]
+hip = ["cubecl/hip"]
+wgpu = ["cubecl/wgpu"]
+wgpu-msl = ["cubecl/wgpu-msl", "wgpu"]
+wgpu-spirv = ["cubecl/wgpu-spirv", "wgpu"]
+cpu = ["cubecl/cpu"]
+autotune-checks = ["cubecl/autotune-checks"]
+profile-tracy = ["cubecl/profile-tracy"]
+test-runtime = ["cubecl/test-runtime"]
+tracing = ["cubecl/tracing"]
+cuda-ptx-wmma = ["cubecl/cuda-ptx-wmma", "cuda"]
+hip-rocwmma = ["cubecl/hip-rocwmma", "hip"]
+exclusive-memory-only = ["cubecl/exclusive-memory-only", "wgpu"]
+spirv-dump = ["cubecl/spirv-dump", "wgpu"]
+template = ["cubecl/template"]
+
+# Intent aliases mapped to canonical CubeCL feature names.
+ptx-wmma = ["cuda-ptx-wmma"]
+rocwmma = ["hip-rocwmma"]
+msl = ["wgpu-msl"]
+spirv = ["wgpu-spirv"]
+burn-ext = ["dep:burn", "dep:burn-cubecl", "dep:burn-wgpu", "dep:futures-lite"]
+experimental-huffman = []

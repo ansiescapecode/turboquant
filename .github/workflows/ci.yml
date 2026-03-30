@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain with clippy/rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Run clippy (deny warnings)
+        run: cargo clippy --all-targets --no-default-features --features "std stdlib cpu" -- -D warnings
+
+  linux-cpu-strict:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Test CPU strict-equivalence profile
+        run: cargo test --no-default-features --features "std stdlib cpu"
+
+  linux-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain with llvm tools
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Enforce 100% line coverage
+        run: |
+          cargo llvm-cov \
+            --no-default-features \
+            --features "std stdlib cpu burn-ext experimental-huffman" \
+            --workspace \
+            --lcov --output-path lcov.info \
+            --fail-under-lines 100 \
+            -- --include-ignored
+
+  linux-burn-ext:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Test burn extension profile
+        run: cargo test --no-default-features --features "std stdlib cpu burn-ext"
+
+  macos-default:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Test default feature set
+        run: cargo test
