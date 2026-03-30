@@ -34,23 +34,26 @@ All values below are measured from repository tests (not paper estimates). Full 
 
 ### Speed (QPS)
 
-| Path | Regular roundtrip | Bitpacked roundtrip | Delta-xor roundtrip | Huffman/entropy roundtrip |
-| --- | ---: | ---: | ---: | ---: |
-| Kernel CPU | 5,242,463.958 | 1,612.556 | 1,384.859 | 248.698 |
-| Kernel WGPU Metal | 132,699.967 | 2,375.051 | 1,925.562 | 266.226 |
-| Burn ext WGPU Metal | 22.154 | 433.544 | n/a | 383.128 |
+| Path | Bitpacked encode | Bitpacked decode | Delta-xor encode | Delta-xor decode | Huffman encode | Huffman decode |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Kernel CPU | 2,419.490 | 2,381.584 | 2,615.603 | 2,431.929 | 0.000 | 0.000 |
+| Kernel WGPU Metal | 1,418.101 | 1,830.378 | 1,161.209 | 1,722.052 | 0.000 | 0.000 |
+| Burn ext WGPU Metal | 415.353 | 2,225.205 | 31.305 | 883.176 | n/a | n/a |
 
 ### Compression (memory savings)
 
-Representative measured savings versus regular fp16 KV cache and regular u32 index buffers:
+Exact measured savings versus regular fp16 KV cache and regular u32 index buffers (from `docs/reports/profiling-2026-03-30.md`):
 
 | Model shape | Bitpacked save vs KV | Huffman/entropy save vs KV | Bitpacked save vs u32 indices | Huffman/entropy save vs u32 indices | Huffman/entropy wire ratio vs bitpacked |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `dim=2048` (Llama/Mistral cases) | 81.250% | ~89.8-89.9% | 90.625% | ~94.9% | ~0.54x |
-| `dim=1024` (Qwen2.5-7B case) | 81.250% | ~89.5-89.8% | 90.625% | ~94.8-94.9% | ~0.54-0.56x |
+| `Llama-3.1-8B (dim=2048)` | 81.250% | 89.841% | 90.625% | 94.921% | 0.542x |
+| `Llama-3.1-70B (dim=2048)` | 81.250% | 89.881% | 90.625% | 94.941% | 0.540x |
+| `Mistral-7B-v0.1 (dim=2048)` | 81.250% | 89.852% | 90.625% | 94.926% | 0.541x |
+| `Qwen2.5-7B (dim=1024)` | 81.250% | 89.507% | 90.625% | 94.753% | 0.560x |
 
 Notes:
-- Huffman figures above are from the shared-codebook path and are now experimental.
+- Kernel Huffman columns above are `0.000` because the kernel codec profiling run used `--features "burn-ext"` without `experimental-huffman`.
+- Burn extension values for delta-xor come from the measured entropy path with `--features "burn-ext experimental-huffman"`.
 - Report includes both packet-only and packet+shared-codebook resident footprints.
 
 ## Strict equivalence contract
@@ -244,9 +247,10 @@ For each compressed KV page/chunk, include:
   - `cargo test --features "wgpu wgpu-msl" test_auto_policy_roundtrip_wgpu_msl` (macOS only)
 - Experimental Huffman validation:
   - `cargo test --no-default-features --features "std stdlib cpu experimental-huffman" auto_policy`
-- Coverage gate (100% line coverage target for `src/**` in CI profile):
+- Coverage gate (current CI threshold for `src/**` profile):
   - `cargo llvm-cov --no-default-features --features "std stdlib cpu burn-ext experimental-huffman" --workspace -- --include-ignored`
-  - CI enforces the same profile and runs with a strict line-threshold gate.
+  - CI command uses `--fail-under-lines 65`.
+  - Latest local run for this profile reports `66.60%` total line coverage.
 
 ## CI
 
