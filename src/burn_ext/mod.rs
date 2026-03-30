@@ -108,7 +108,8 @@ where
         let dim = primitive.shape.num_elements();
         let assets =
             prepare_turboquant_launch_assets::<R>(&primitive.device, dim, bit_width, seed, None);
-        let outputs = launch_turboquant_fused_device_from_handle::<R>(&assets, &primitive.handle, true);
+        let outputs =
+            launch_turboquant_fused_device_from_handle::<R>(&assets, &primitive.handle, true);
         build_device_huffman_codebook(&outputs)
     }
 }
@@ -140,7 +141,8 @@ where
         let dim = primitive.shape.num_elements();
         let assets =
             prepare_turboquant_launch_assets::<R>(&primitive.device, dim, bit_width, seed, None);
-        let outputs = launch_turboquant_fused_device_from_handle::<R>(&assets, &primitive.handle, true);
+        let outputs =
+            launch_turboquant_fused_device_from_handle::<R>(&assets, &primitive.handle, true);
         encode_device_huffman_with_codebook(&outputs, codebook)
     }
 }
