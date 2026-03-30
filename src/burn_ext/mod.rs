@@ -94,17 +94,23 @@ where
     BT: burn_cubecl::BoolElement,
 {
     #[cfg(not(feature = "experimental-huffman"))]
-    panic!("huffman is experimental; enable feature \"experimental-huffman\"");
-    use crate::kernels::{
-        build_device_huffman_codebook, launch_turboquant_fused_device_from_handle,
-        prepare_turboquant_launch_assets,
-    };
-    let primitive = tensor.into_primitive().tensor();
-    let dim = primitive.shape.num_elements();
-    let assets =
-        prepare_turboquant_launch_assets::<R>(&primitive.device, dim, bit_width, seed, None);
-    let outputs = launch_turboquant_fused_device_from_handle::<R>(&assets, &primitive.handle, true);
-    build_device_huffman_codebook(&outputs)
+    {
+        let _ = (tensor, bit_width, seed);
+        panic!("huffman is experimental; enable feature \"experimental-huffman\"");
+    }
+    #[cfg(feature = "experimental-huffman")]
+    {
+        use crate::kernels::{
+            build_device_huffman_codebook, launch_turboquant_fused_device_from_handle,
+            prepare_turboquant_launch_assets,
+        };
+        let primitive = tensor.into_primitive().tensor();
+        let dim = primitive.shape.num_elements();
+        let assets =
+            prepare_turboquant_launch_assets::<R>(&primitive.device, dim, bit_width, seed, None);
+        let outputs = launch_turboquant_fused_device_from_handle::<R>(&assets, &primitive.handle, true);
+        build_device_huffman_codebook(&outputs)
+    }
 }
 
 /// Encode Burn tensor MSE indices to Huffman payload using a shared codebook.
@@ -120,17 +126,23 @@ where
     BT: burn_cubecl::BoolElement,
 {
     #[cfg(not(feature = "experimental-huffman"))]
-    panic!("huffman is experimental; enable feature \"experimental-huffman\"");
-    use crate::kernels::{
-        encode_device_huffman_with_codebook, launch_turboquant_fused_device_from_handle,
-        prepare_turboquant_launch_assets,
-    };
-    let primitive = tensor.into_primitive().tensor();
-    let dim = primitive.shape.num_elements();
-    let assets =
-        prepare_turboquant_launch_assets::<R>(&primitive.device, dim, bit_width, seed, None);
-    let outputs = launch_turboquant_fused_device_from_handle::<R>(&assets, &primitive.handle, true);
-    encode_device_huffman_with_codebook(&outputs, codebook)
+    {
+        let _ = (tensor, bit_width, seed, codebook);
+        panic!("huffman is experimental; enable feature \"experimental-huffman\"");
+    }
+    #[cfg(feature = "experimental-huffman")]
+    {
+        use crate::kernels::{
+            encode_device_huffman_with_codebook, launch_turboquant_fused_device_from_handle,
+            prepare_turboquant_launch_assets,
+        };
+        let primitive = tensor.into_primitive().tensor();
+        let dim = primitive.shape.num_elements();
+        let assets =
+            prepare_turboquant_launch_assets::<R>(&primitive.device, dim, bit_width, seed, None);
+        let outputs = launch_turboquant_fused_device_from_handle::<R>(&assets, &primitive.handle, true);
+        encode_device_huffman_with_codebook(&outputs, codebook)
+    }
 }
 
 /// Decode a device packet back to device-resident indices.
@@ -146,8 +158,14 @@ pub fn turboquant_mse_decode_indices_with_codebook<R: burn_cubecl::CubeRuntime>(
     codebook: &crate::kernels::DeviceHuffmanCodebook<R>,
 ) -> Handle {
     #[cfg(not(feature = "experimental-huffman"))]
-    panic!("huffman is experimental; enable feature \"experimental-huffman\"");
-    crate::kernels::decode_device_indices_with_codebook(packet, Some(codebook))
+    {
+        let _ = (packet, codebook);
+        panic!("huffman is experimental; enable feature \"experimental-huffman\"");
+    }
+    #[cfg(feature = "experimental-huffman")]
+    {
+        crate::kernels::decode_device_indices_with_codebook(packet, Some(codebook))
+    }
 }
 
 impl<R, I, BT> TurboQuantBackendExt for burn_cubecl::CubeBackend<R, f32, I, BT>

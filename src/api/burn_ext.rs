@@ -231,9 +231,14 @@ where
     /// Panics when the `experimental-huffman` feature is not enabled.
     pub fn huffman_device(&self, outputs: &DeviceFusedOutputs<R>) -> DeviceEncodedPacket<R> {
         #[cfg(not(feature = "experimental-huffman"))]
-        panic!("huffman is experimental; enable feature \"experimental-huffman\"");
+        {
+            let _ = outputs;
+            panic!("huffman is experimental; enable feature \"experimental-huffman\"");
+        }
         #[cfg(feature = "experimental-huffman")]
-        encode_device_huffman(outputs)
+        {
+            encode_device_huffman(outputs)
+        }
     }
 
     #[cfg(feature = "experimental-huffman")]
