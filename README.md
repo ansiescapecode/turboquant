@@ -18,9 +18,9 @@ If you choose to run this kernel, you do so knowing that you are using something
 
 ## Paper citations for code
 
-Detailed paper-to-code mapping is documented in:
+Primary paper reference:
 
-- `docs/references/paper-code-traceability.md`
+- `docs/references/turboquant.pdf`
 
 ## Profiling reports
 
